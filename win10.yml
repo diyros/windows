@@ -15,4 +15,4 @@ services:
           - "8006:8006"
           - "13389:3389/tcp"
           - "13389:3389/udp"
-        stop_grace_period: 2m
+        stop_grace_period: 2m 
