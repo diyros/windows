@@ -10,6 +10,6 @@
       "version": "latest"
     }
   },
-  "postStartCommand": "sudo tailscale set --auto-update && sudo tailscale up --authkey=${TAILSCALE_AUTHKEY} --advertise-exit-node --reset --accept-dns=false'",
+  "postStartCommand": "sudo tailscale up --authkey=${TAILSCALE_AUTHKEY} --advertise-exit-node --reset --accept-dns=false'",
   "remoteUser": "codespace"
 }
