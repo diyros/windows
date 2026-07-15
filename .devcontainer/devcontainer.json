@@ -13,7 +13,7 @@
   },
   "postStartCommand": [
     "sleep 5",
-    "sudo tailscale up --reset --tun=userspace-networking --authkey=${TAILSCALE_AUTHKEY} --accept-routes --exit-node --exit-node-allow-lan-access"
+    "sudo tailscale up --authkey=${TAILSCALE_AUTHKEY} --exit-node"
   ],
   "remoteUser": "codespace"
 }
