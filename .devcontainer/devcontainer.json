@@ -1,0 +1,40 @@
+{
+  "name": "Codespace + Tailscale ExitNode + Node + Python + Git",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+
+  "privileged": true,
+  "capAdd": [
+    "NET_ADMIN",
+    "NET_RAW"
+  ],
+
+  // 预装 Node LTS、Python、Git、常用工具
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    }
+  },
+
+  // 启动后自动配置 Tailscale + 出口节点
+  "postCreateCommand": "(curl -fsSL https://tailscale.com/install.sh | sh) > /tmp/tailscale.log 2>&1 \
+&& sudo tailscaled --tun=userspace-networking --state=/tmp/tailscale.state > /dev/null 2>&1 & sleep 3 \
+&& sudo tailscale up --authkey=tskey-auth-kzBupQZ4Q611CNTRL-5eYGQRy9VA8aoHgxVvGFA8MHL15BT19oK --accept-routes --exit-node=CodeSpace-ExitNode",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "GitHub.copilot"
+      ]
+    }
+  },
+
+  "remoteUser": "codespace"
+}
