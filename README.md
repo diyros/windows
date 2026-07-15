@@ -5,14 +5,53 @@
 ---
 
 
-## 云端 Windows 启动容器
- 
-```bash
+## 利用GitHub搭建4核16GB运行内存的美国服务器
 
-docker compose -f win10.yml up -d
+### 1\. 创建一个私密仓库
+
+https://github.com
+
+### 2\. 打开该仓库的代码空间 > 创建代码空间
+
+### 3\. 创建一个docker可执行文件
+
+比如我要创建一个window轻量级的系统：windows10.yaml
+如果要部署其它系统可以复制让AI帮你修改
+ 
+```
+services:
+  windows-ltsc:
+    image: dockurr/windows
+    container_name: win10-ltsc
+    environment:
+      VERSION: "10"          # 使用 Windows 10 LTSC 长期服务版（无应用商店/Edge等冗余组件）
+      EDITION: "Enterprise"  # 企业版更适合轻量化
+      USERNAME: "admin"  # 账户名
+      PASSWORD: "admin" # 密码
+      RAM_SIZE: "8G"         # 内存减至 8GB（LTSC 最低要求2G）
+      CPU_CORES: "4"         # CPU 核心数
+      DISK_SIZE: "64G"       # 磁盘精简至 64GB（LTSC 安装后仅需 12GB）
+      DISABLE_VIRTIO: "true" # 禁用虚拟驱动（提升老硬件兼容性）
+      SKIP_TPM_CHECK: "true" # 绕过 TPM 检查（减少启动项）
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "8007:8006"          # 修改 Web 控制台端口避免冲突
+      - "3390:3389/tcp"      # 修改 RDP 端口避免冲突
+    stop_grace_period: 1m    # 缩短关闭等待时间
+    restart: unless-stopped   # 异常时自动重启
 
 ```
+### 4\.启动系统
 
+```
+docker compose -f win10.yml up -d
+```
+
+### 5\.通过VS Code内置的内网穿透工具 > 穿透控制端口 > 打开链接即可远程控制该服务器
 
 
 ## 一、Tailscale 介绍

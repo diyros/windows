@@ -1,0 +1,115 @@
+name: Ubuntu VNC Server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ubuntu-vnc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3600
+
+    steps:
+      - name: Update APT
+        run: sudo apt-get update
+
+      - name: Prevent service auto-start during apt
+        run: |
+          echo -e '#!/bin/sh\nexit 101' | sudo tee /usr/sbin/policy-rc.d >/dev/null
+          sudo chmod +x /usr/sbin/policy-rc.d
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Disable systemctl hooks
+        run: bash .github/workflows/scripts/disable-systemctl.sh
+
+      - name: Pre-create system users and directories
+        run: bash .github/workflows/scripts/precreate-users.sh
+
+      - name: Install Desktop and VNC Server
+        run: bash .github/workflows/scripts/install-desktop-vnc.sh
+
+      - name: Validate system users and tmpfiles
+        run: bash .github/workflows/scripts/validate-tmpfiles.sh
+
+      - name: Re-enable service start
+        run: bash .github/workflows/scripts/reenable-services.sh
+
+      - name: Configure VNC Server
+        run: |
+          mkdir -p ~/.vnc
+          PASS=$(tr -dc 'A-Za-z0-9!@#$%^&*' </dev/urandom | head -c 16)
+          echo "$PASS" | vncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
+          echo "VNC_PASSWORD=$PASS" >> "$GITHUB_ENV"
+          cat > ~/.vnc/xstartup << 'EOF'
+          #!/bin/bash
+          unset SESSION_MANAGER
+          unset DBUS_SESSION_BUS_ADDRESS
+          [ -r "$HOME/.Xresources" ] && xrdb "$HOME/.Xresources"
+          export XDG_SESSION_TYPE=x11
+          export GDK_BACKEND=x11
+          export QT_QPA_PLATFORM=xcb
+          exec dbus-launch /usr/bin/gnome-session --session=gnome
+          EOF
+          chmod +x ~/.vnc/xstartup
+          vncserver -kill :0 || true
+          vncserver :0 -localhost no -geometry 1280x800 -depth 24 -xstartup ~/.vnc/xstartup
+      
+      # 1. 安装 Tailscale
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sudo sh
+          sudo systemctl enable --now tailscaled
+
+      # 2. 开启IP转发（出口节点强制要求）
+      - name: Enable IP Forwarding
+        run: |
+          echo 'net.ipv4.ip_forward=1' | sudo tee /etc/sysctl.d/99-tailscale.conf
+          echo 'net.ipv6.conf.all.forwarding=1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+          sudo sysctl -p /etc/sysctl.d/99-tailscale.conf  
+          
+     # 3. 防火墙开启IP伪装（对应文档firewalld配置，Ubuntu用ufw兼容）
+      - name: Firewall Masquerade
+        run: |
+          sudo ufw allow in on tailscale0
+          sudo ufw allow out on tailscale0          
+  
+          
+      - name: Start tailscaled (manual)
+        run: |
+          sudo mkdir -p /var/run
+          nohup sudo tailscaled >/tmp/tailscaled.log 2>&1 & disown
+          sleep 3
+          
+       # 4. 声明本机为出口节点 + 登录Tailscale
+      - name: Advertise Exit Node & Login
+        env:
+          TS_AUTHKEY: ${{ secrets.TAILSCALE_AUTH_KEY }} # 仓库密钥存储授权key
+        run: |
+          # 标记此机器作为出口节点
+          sudo tailscale set --advertise-exit-node
+          # 接入Tailscale网络
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-vpn      
+          echo "TAILSCALE_IP=$(tailscale ip -4)" >> "$GITHUB_ENV"
+ 
+ 
+      - name: Restore systemctl hooks
+        run: bash .github/workflows/scripts/restore-systemctl.sh
+
+      - name: Verify VNC Connection
+        run: |
+          echo "Tailscale IP: $TAILSCALE_IP"
+          nc -z -v "$TAILSCALE_IP" 5900
+
+      - name: Keep Connection Alive
+        run: |
+          echo "=== VNC ACCESS INFORMATION ==="
+          echo "Address: ${TAILSCALE_IP}:5900"
+          echo "Password: ${VNC_PASSWORD}"
+          echo "Desktop: GNOME"
+          echo "=============================="
+          while true; do
+            echo "[$(date)] VNC Active - Cancel workflow to terminate"
+            sleep 300
+          done

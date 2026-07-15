@@ -1,0 +1,64 @@
+name: Tailscale Exit Node 出口节点
+on:
+  workflow_dispatch: # 手动触发
+
+jobs:
+  build_exit_node:
+    runs-on: ubuntu-latest
+    # 定义全局输出节点，下游任务可读取出口节点信息
+    outputs:
+      exit_node_ip: ${{ steps.export_info.outputs.ts_ip }}
+      exit_node_host: ${{ steps.export_info.outputs.ts_hostname }}
+    steps:
+      # 1. 安装 Tailscale
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sudo sh
+          sudo systemctl enable --now tailscaled
+
+      # 2. 开启IP转发（出口节点强制要求）
+      - name: Enable IP Forwarding
+        run: |
+          echo 'net.ipv4.ip_forward=1' | sudo tee /etc/sysctl.d/99-tailscale.conf
+          echo 'net.ipv6.conf.all.forwarding=1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+          sudo sysctl -p /etc/sysctl.d/99-tailscale.conf
+
+      # 3. 防火墙开启IP伪装（对应文档firewalld配置，Ubuntu用ufw兼容）
+      - name: Firewall Masquerade
+        run: |
+          sudo ufw allow in on tailscale0
+          sudo ufw allow out on tailscale0
+
+      # 4. 声明本机为出口节点 + 登录Tailscale
+      - name: Advertise Exit Node & Login
+        env:
+          TS_AUTHKEY: ${{ secrets.TAILSCALE_AUTH_KEY }} # 仓库密钥存储授权key
+        run: |
+          # 标记此机器作为出口节点
+          sudo tailscale set --advertise-exit-node
+          # 接入Tailscale网络
+          sudo tailscale up --authkey ${{ env.TS_AUTHKEY }}
+
+      # 5. 提取节点信息，输出到全局outputs
+      - name: Export Exit Node Info
+        id: export_info
+        run: |
+          TS_IP=$(tailscale ip -4)
+          TS_HOST=$(hostname)
+          echo "ts_ip=$TS_IP" >> $GITHUB_OUTPUT
+          echo "ts_hostname=$TS_HOST" >> $GITHUB_OUTPUT
+
+      # 打印输出信息测试
+      - name: Print Exit Node Data
+        run: |
+          echo "出口节点内网IP: ${{ steps.export_info.outputs.ts_ip }}"
+          echo "节点主机名: ${{ steps.export_info.outputs.ts_hostname }}"
+
+  # 示例下游Job：读取上游输出的出口节点信息
+  use_exit_node:
+    needs: build_exit_node
+    runs-on: ubuntu-latest
+    steps:
+      - name: 读取出口节点输出参数
+        run: |
+          echo "复用出口节点IP：${{ needs.build_exit_node.outputs.exit_node_ip }}"
